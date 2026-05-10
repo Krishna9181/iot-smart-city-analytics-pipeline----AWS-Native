@@ -1,0 +1,107 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Smart City Kinesis Data Streams and Firehose'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  
+  DataLakeBucket:
+    Type: String
+    Default: smart-city-datalake-2026
+
+Resources:
+  # Kinesis Data Stream
+  SmartCityDataStream:
+    Type: AWS::Kinesis::Stream
+    Properties:
+      Name: !Sub 'smart-city-sensors-${Environment}'
+      ShardCount: 2
+      RetentionPeriod: 24
+      StreamEncryption:
+        EncryptionType: KMS
+        KeyId: alias/aws/kinesis
+      Tags:
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Project
+          Value: SmartCity
+
+  # IAM Role for Firehose
+  FirehoseDeliveryRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'smart-city-firehose-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: firehose.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: FirehoseDeliveryPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:AbortMultipartUpload
+                  - s3:GetBucketLocation
+                  - s3:GetObject
+                  - s3:ListBucket
+                  - s3:ListBucketMultipartUploads
+                  - s3:PutObject
+                Resource:
+                  - !Sub 'arn:aws:s3:::${DataLakeBucket}'
+                  - !Sub 'arn:aws:s3:::${DataLakeBucket}/*'
+              - Effect: Allow
+                Action:
+                  - kinesis:DescribeStream
+                  - kinesis:GetShardIterator
+                  - kinesis:GetRecords
+                Resource: !GetAtt SmartCityDataStream.Arn
+
+  # Kinesis Data Firehose
+  SmartCityFirehose:
+    Type: AWS::KinesisFirehose::DeliveryStream
+    Properties:
+      DeliveryStreamName: !Sub 'smart-city-firehose-${Environment}'
+      DeliveryStreamType: KinesisStreamAsSource
+      KinesisStreamSourceConfiguration:
+        KinesisStreamARN: !GetAtt SmartCityDataStream.Arn
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+      ExtendedS3DestinationConfiguration:
+        BucketARN: !Sub 'arn:aws:s3:::${DataLakeBucket}'
+        BufferingHints:
+          IntervalInSeconds: 60
+          SizeInMBs: 5
+        CompressionFormat: GZIP
+        Prefix: 'kinesis-raw/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/hour=!{timestamp:HH}/'
+        ErrorOutputPrefix: 'kinesis-errors/'
+        RoleARN: !GetAtt FirehoseDeliveryRole.Arn
+        ProcessingConfiguration:
+          Enabled: false
+        CloudWatchLoggingOptions:
+          Enabled: true
+          LogGroupName: !Sub '/aws/kinesisfirehose/smart-city-${Environment}'
+
+Outputs:
+  KinesisStreamName:
+    Description: 'Kinesis Data Stream Name'
+    Value: !Ref SmartCityDataStream
+    Export:
+      Name: !Sub '${AWS::StackName}-StreamName'
+  
+  KinesisStreamArn:
+    Description: 'Kinesis Data Stream ARN'
+    Value: !GetAtt SmartCityDataStream.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-StreamArn'
+  
+  FirehoseDeliveryStreamName:
+    Description: 'Firehose Delivery Stream Name'
+    Value: !Ref SmartCityFirehose
+    Export:
+      Name: !Sub '${AWS::StackName}-FirehoseName'
