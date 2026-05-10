@@ -1,0 +1,163 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'Smart City AWS Glue Resources'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+  
+  DataLakeBucket:
+    Type: String
+    Default: smart-city-datalake-2026
+
+Resources:
+  # Glue Service Role
+  GlueServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub 'smart-city-glue-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: glue.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSGlueServiceRole
+      Policies:
+        - PolicyName: SmartCityGluePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub 'arn:aws:s3:::${DataLakeBucket}'
+                  - !Sub 'arn:aws:s3:::${DataLakeBucket}/*'
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+
+  # Glue Database
+  SmartCityDatabase:
+    Type: AWS::Glue::Database
+    Properties:
+      CatalogId: !Ref AWS::AccountId
+      DatabaseInput:
+        Name: !Sub 'smart_city_${Environment}'
+        Description: 'Smart City IoT Sensor Data Database'
+
+  # Glue Crawler for Bronze Layer
+  BronzeCrawler:
+    Type: AWS::Glue::Crawler
+    Properties:
+      Name: !Sub 'smart-city-bronze-crawler-${Environment}'
+      Role: !GetAtt GlueServiceRole.Arn
+      DatabaseName: !Ref SmartCityDatabase
+      Targets:
+        S3Targets:
+          - Path: !Sub 's3://${DataLakeBucket}/kinesis-raw/'
+      SchemaChangePolicy:
+        UpdateBehavior: UPDATE_IN_DATABASE
+        DeleteBehavior: LOG
+      Schedule:
+        ScheduleExpression: 'cron(0 */6 * * ? *)'  # Every 6 hours
+
+  # Glue Jobs
+  BatchETLJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub 'smart-city-batch-etl-${Environment}'
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://smart-city-glue-scripts-${Environment}-${AWS::AccountId}/batch-etl-bronze-to-silver.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-metrics': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--source_bucket': !Ref DataLakeBucket
+        '--target_bucket': !Ref DataLakeBucket
+      MaxRetries: 1
+      Timeout: 60
+      GlueVersion: '4.0'
+      NumberOfWorkers: 5
+      WorkerType: G.1X
+
+  StreamingETLJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub 'smart-city-streaming-etl-${Environment}'
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: gluestreaming
+        ScriptLocation: !Sub 's3://smart-city-glue-scripts-${Environment}-${AWS::AccountId}/streaming-etl-kinesis-to-silver.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--enable-metrics': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--source_bucket': !Ref DataLakeBucket
+        '--target_bucket': !Ref DataLakeBucket
+      MaxRetries: 0
+      Timeout: 2880  # 48 hours for streaming
+      GlueVersion: '4.0'
+      NumberOfWorkers: 5
+      WorkerType: G.1X
+
+  SilverToGoldJob:
+    Type: AWS::Glue::Job
+    Properties:
+      Name: !Sub 'smart-city-silver-to-gold-${Environment}'
+      Role: !GetAtt GlueServiceRole.Arn
+      Command:
+        Name: glueetl
+        ScriptLocation: !Sub 's3://smart-city-glue-scripts-${Environment}-${AWS::AccountId}/silver-to-gold-etl.py'
+        PythonVersion: '3'
+      DefaultArguments:
+        '--job-language': 'python'
+        '--job-bookmark-option': 'job-bookmark-enable'
+        '--enable-metrics': 'true'
+        '--enable-continuous-cloudwatch-log': 'true'
+        '--source_bucket': !Ref DataLakeBucket
+        '--target_bucket': !Ref DataLakeBucket
+      MaxRetries: 1
+      Timeout: 60
+      GlueVersion: '4.0'
+      NumberOfWorkers: 3
+      WorkerType: G.1X
+
+  # Glue Trigger for Daily Processing
+  DailyETLTrigger:
+    Type: AWS::Glue::Trigger
+    Properties:
+      Name: !Sub 'smart-city-daily-trigger-${Environment}'
+      Type: SCHEDULED
+      Schedule: 'cron(0 2 * * ? *)'  # Daily at 2 AM
+      Actions:
+        - JobName: !Ref BatchETLJob
+        - JobName: !Ref SilverToGoldJob
+
+Outputs:
+  GlueServiceRoleArn:
+    Description: 'Glue Service Role ARN'
+    Value: !GetAtt GlueServiceRole.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-GlueServiceRole'
+  
+  DatabaseName:
+    Description: 'Glue Database Name'
+    Value: !Ref SmartCityDatabase
+    Export:
+      Name: !Sub '${AWS::StackName}-DatabaseName'
