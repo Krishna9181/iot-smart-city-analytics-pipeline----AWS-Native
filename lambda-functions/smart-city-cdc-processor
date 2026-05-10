@@ -1,0 +1,199 @@
+import json
+import boto3
+import uuid
+from datetime import datetime, timezone
+from decimal import Decimal
+import os
+
+# Initialize AWS clients
+s3 = boto3.client('s3')
+
+# Get environment variables
+S3_BUCKET = os.environ['S3_BUCKET']
+S3_PREFIX = os.environ['S3_PREFIX']
+
+def lambda_handler(event, context):
+    """
+    CDC Processor - Processes DynamoDB Stream events and stores raw changes in S3 Bronze
+    """
+    
+    try:
+        processed_records = []
+        
+        # Process each record from DynamoDB Streams
+        for record in event['Records']:
+            processed_record = process_dynamodb_record(record)
+            if processed_record:
+                processed_records.append(processed_record)
+        
+        # Store processed records in S3 Bronze layer
+        if processed_records:
+            s3_result = store_in_s3_bronze(processed_records)
+            
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': f'Successfully processed {len(processed_records)} CDC records',
+                'timestamp': datetime.now(timezone.utc).isoformat(),
+                'records_processed': len(processed_records),
+                's3_location': s3_result if processed_records else 'No records to store'
+            })
+        }
+        
+    except Exception as e:
+        print(f"Error in CDC processor: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': str(e),
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            })
+        }
+
+def process_dynamodb_record(record):
+    """Process individual DynamoDB stream record"""
+    
+    try:
+        # Extract event information
+        event_name = record['eventName']  # INSERT, MODIFY, REMOVE
+        event_source = record['eventSource']  # aws:dynamodb
+        
+        # Skip if not a DynamoDB event
+        if event_source != 'aws:dynamodb':
+            return None
+        
+        # Create CDC record
+        cdc_record = {
+            'cdc_metadata': {
+                'event_id': str(uuid.uuid4()),
+                'event_name': event_name,
+                'event_source': event_source,
+                'aws_region': record['awsRegion'],
+                'event_source_arn': record['eventSourceARN'],
+                'processing_timestamp': datetime.now(timezone.utc).isoformat()
+            }
+        }
+        
+        # Add old image (before change)
+        if 'OldImage' in record['dynamodb']:
+            cdc_record['old_image'] = convert_dynamodb_to_json(record['dynamodb']['OldImage'])
+        
+        # Add new image (after change)
+        if 'NewImage' in record['dynamodb']:
+            cdc_record['new_image'] = convert_dynamodb_to_json(record['dynamodb']['NewImage'])
+        
+        # Add keys for identification
+        if 'Keys' in record['dynamodb']:
+            cdc_record['keys'] = convert_dynamodb_to_json(record['dynamodb']['Keys'])
+        
+        # Add sequence information
+        cdc_record['sequence_number'] = record['dynamodb']['SequenceNumber']
+        cdc_record['size_bytes'] = record['dynamodb']['SizeBytes']
+        
+        return cdc_record
+        
+    except Exception as e:
+        print(f"Error processing DynamoDB record: {str(e)}")
+        return None
+
+def convert_dynamodb_to_json(dynamodb_item):
+    """Convert DynamoDB format to regular JSON"""
+    
+    def convert_value(value):
+        if 'S' in value:  # String
+            return value['S']
+        elif 'N' in value:  # Number
+            return float(value['N'])
+        elif 'BOOL' in value:  # Boolean
+            return value['BOOL']
+        elif 'M' in value:  # Map
+            return {k: convert_value(v) for k, v in value['M'].items()}
+        elif 'L' in value:  # List
+            return [convert_value(item) for item in value['L']]
+        elif 'SS' in value:  # String Set
+            return value['SS']
+        elif 'NS' in value:  # Number Set
+            return [float(n) for n in value['NS']]
+        else:
+            return value
+    
+    return {key: convert_value(value) for key, value in dynamodb_item.items()}
+
+def store_in_s3_bronze(records):
+    """Store CDC records in S3 Bronze layer with partitioning"""
+    
+    try:
+        # Create timestamp-based partition
+        now = datetime.now(timezone.utc)
+        partition_path = f"year={now.year}/month={now.month:02d}/day={now.day:02d}/hour={now.hour:02d}/"
+        
+        # Create unique filename
+        filename = f"cdc_batch_{now.strftime('%Y%m%d_%H%M%S')}_{str(uuid.uuid4())[:8]}.json"
+        
+        # Full S3 key
+        s3_key = f"{S3_PREFIX}{partition_path}{filename}"
+        
+        # Prepare data for S3
+        s3_data = {
+            'batch_metadata': {
+                'batch_id': str(uuid.uuid4()),
+                'processing_timestamp': now.isoformat(),
+                'record_count': len(records),
+                'source': 'dynamodb-streams'
+            },
+            'records': records
+        }
+        
+        # Upload to S3
+        s3.put_object(
+            Bucket=S3_BUCKET,
+            Key=s3_key,
+            Body=json.dumps(s3_data, indent=2),
+            ContentType='application/json'
+        )
+        
+        print(f"Successfully stored {len(records)} CDC records to s3://{S3_BUCKET}/{s3_key}")
+        return f"s3://{S3_BUCKET}/{s3_key}"
+        
+    except Exception as e:
+        print(f"Error storing in S3: {str(e)}")
+        raise e
+
+def lambda_handler_test():
+    """Test function for local development"""
+    
+    # Sample DynamoDB Stream event for testing
+    test_event = {
+        'Records': [
+            {
+                'eventID': 'test-event-id',
+                'eventName': 'INSERT',
+                'eventVersion': '1.1',
+                'eventSource': 'aws:dynamodb',
+                'awsRegion': 'us-east-1',
+                'dynamodb': {
+                    'Keys': {
+                        'sensor_id': {'S': 'AQ_001'},
+                        'timestamp': {'S': '2024-01-15T10:00:00Z'}
+                    },
+                    'NewImage': {
+                        'sensor_id': {'S': 'AQ_001'},
+                        'timestamp': {'S': '2024-01-15T10:00:00Z'},
+                        'sensor_type': {'S': 'air_quality'},
+                        'measurements': {
+                            'M': {
+                                'pm25': {'N': '15.2'},
+                                'temperature': {'N': '18.5'}
+                            }
+                        }
+                    },
+                    'SequenceNumber': '123456789',
+                    'SizeBytes': 256,
+                    'StreamViewType': 'NEW_AND_OLD_IMAGES'
+                },
+                'eventSourceARN': 'arn:aws:dynamodb:us-east-1:123456789:table/smart_city_sensors/stream/2024-01-15T10:00:00.000'
+            }
+        ]
+    }
+    
+    return lambda_handler(test_event, None)
