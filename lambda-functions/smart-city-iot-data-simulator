@@ -1,0 +1,200 @@
+import json
+import boto3
+import uuid
+import random
+import math
+from datetime import datetime, timezone
+from decimal import Decimal
+import os
+
+# Initialize AWS clients
+dynamodb = boto3.resource('dynamodb')
+kinesis = boto3.client('kinesis')
+
+# Get environment variables
+DYNAMODB_TABLE = os.environ['DYNAMODB_TABLE']
+KINESIS_STREAM = os.environ['KINESIS_STREAM']
+
+def lambda_handler(event, context):
+    """
+    IoT Data Simulator - Generates sensor data and sends to both DynamoDB and Kinesis
+    """
+    
+    try:
+        # Get current timestamp
+        current_time = datetime.now(timezone.utc)
+        timestamp_str = current_time.isoformat()
+        
+        # Generate realistic sensor data
+        sensors_data = generate_sensor_readings(current_time)
+        
+        # Process each sensor reading
+        results = []
+        for sensor_data in sensors_data:
+            # Path 1: Store in DynamoDB (Source of Truth)
+            dynamo_result = store_in_dynamodb(sensor_data)
+            
+            # Path 2: Send to Kinesis (Real-time Processing)
+            kinesis_result = send_to_kinesis(sensor_data)
+            
+            results.append({
+                'sensor_id': sensor_data['sensor_id'],
+                'dynamodb_status': dynamo_result,
+                'kinesis_status': kinesis_result
+            })
+        
+        return {
+            'statusCode': 200,
+            'body': json.dumps({
+                'message': f'Successfully processed {len(sensors_data)} sensor readings',
+                'timestamp': timestamp_str,
+                'results': results
+            })
+        }
+        
+    except Exception as e:
+        print(f"Error in IoT simulator: {str(e)}")
+        return {
+            'statusCode': 500,
+            'body': json.dumps({
+                'error': str(e),
+                'timestamp': datetime.now(timezone.utc).isoformat()
+            })
+        }
+
+def generate_sensor_readings(current_time):
+    """Generate realistic IoT sensor data"""
+    
+    sensors = []
+    hour = current_time.hour
+    
+    # Air Quality Sensors (3 sensors)
+    for i in range(1, 4):
+        sensor_id = f"AQ_{i:03d}"
+        
+        # Simulate realistic air quality patterns
+        # Higher pollution during rush hours (7-9 AM, 5-7 PM)
+        base_pm25 = 12
+        if hour in [7, 8, 9, 17, 18, 19]:  # Rush hours
+            base_pm25 += random.uniform(8, 15)
+        elif hour in [22, 23, 0, 1, 2, 3, 4, 5]:  # Night hours
+            base_pm25 += random.uniform(-3, 2)
+        else:  # Regular hours
+            base_pm25 += random.uniform(2, 8)
+        
+        pm25 = max(5, base_pm25 + random.gauss(0, 3))
+        
+        sensor_data = {
+            'sensor_id': sensor_id,
+            'timestamp': current_time.isoformat(),
+            'sensor_type': 'air_quality',
+            'location': {
+                'lat': round(40.7128 + random.uniform(-0.05, 0.05), 6),
+                'lon': round(-74.0060 + random.uniform(-0.05, 0.05), 6),
+                'zone': random.choice(['downtown', 'midtown', 'uptown'])
+            },
+            'measurements': {
+                'pm25': round(pm25, 1),
+                'pm10': round(pm25 * 1.4, 1),
+                'co2': round(400 + random.uniform(0, 50), 1),
+                'temperature': round(15 + 10 * math.sin((hour - 6) * math.pi / 12) + random.uniform(-2, 2), 1),
+                'humidity': round(50 + 20 * random.random(), 1)
+            },
+            'metadata': {
+                'device_status': 'active',
+                'battery_level': random.randint(70, 100),
+                'signal_strength': random.randint(-60, -30),
+                'last_calibration': '2024-01-10T00:00:00Z'
+            },
+            'created_at': current_time.isoformat(),
+            'updated_at': current_time.isoformat(),
+            'is_active': True,
+            'event_id': str(uuid.uuid4())
+        }
+        sensors.append(sensor_data)
+    
+    # Traffic Sensors (2 sensors)
+    for i in range(1, 3):
+        sensor_id = f"TR_{i:03d}"
+        
+        # Traffic patterns based on time
+        base_vehicles = 20
+        if hour in [7, 8, 9, 17, 18, 19]:  # Rush hours
+            base_vehicles += random.randint(30, 60)
+        elif hour in [22, 23, 0, 1, 2, 3, 4, 5]:  # Night hours
+            base_vehicles = random.randint(5, 15)
+        else:
+            base_vehicles += random.randint(10, 30)
+        
+        vehicle_count = max(0, base_vehicles + random.randint(-10, 10))
+        avg_speed = max(5, 35 - (vehicle_count * 0.3) + random.uniform(-5, 5))
+        
+        sensor_data = {
+            'sensor_id': sensor_id,
+            'timestamp': current_time.isoformat(),
+            'sensor_type': 'traffic',
+            'location': {
+                'lat': round(40.7128 + random.uniform(-0.05, 0.05), 6),
+                'lon': round(-74.0060 + random.uniform(-0.05, 0.05), 6),
+                'intersection': f"Street_{i}_Ave_{random.randint(1,10)}"
+            },
+            'measurements': {
+                'vehicle_count': vehicle_count,
+                'avg_speed': round(avg_speed, 1),
+                'congestion_level': 'high' if vehicle_count > 50 else 'moderate' if vehicle_count > 25 else 'low',
+                'pedestrian_count': random.randint(0, 20)
+            },
+            'metadata': {
+                'device_status': 'active',
+                'battery_level': random.randint(70, 100),
+                'signal_strength': random.randint(-60, -30)
+            },
+            'created_at': current_time.isoformat(),
+            'updated_at': current_time.isoformat(),
+            'is_active': True,
+            'event_id': str(uuid.uuid4())
+        }
+        sensors.append(sensor_data)
+    
+    return sensors
+
+def convert_floats_to_decimal(obj):
+    """Recursively convert float values to Decimal for DynamoDB compatibility"""
+    if isinstance(obj, list):
+        return [convert_floats_to_decimal(item) for item in obj]
+    elif isinstance(obj, dict):
+        return {key: convert_floats_to_decimal(value) for key, value in obj.items()}
+    elif isinstance(obj, float):
+        return Decimal(str(obj))
+    else:
+        return obj
+
+def store_in_dynamodb(sensor_data):
+    """Store sensor data in DynamoDB"""
+    try:
+        table = dynamodb.Table(DYNAMODB_TABLE)
+        
+        # Convert all floats to Decimal for DynamoDB
+        item = convert_floats_to_decimal(sensor_data)
+        
+        table.put_item(Item=item)
+        return 'success'
+        
+    except Exception as e:
+        print(f"DynamoDB error: {str(e)}")
+        return f'error: {str(e)}'
+
+def send_to_kinesis(sensor_data):
+    """Send sensor data to Kinesis for real-time processing"""
+    try:
+        # For Kinesis, we can keep floats as they are (JSON serializable)
+        response = kinesis.put_record(
+            StreamName=KINESIS_STREAM,
+            Data=json.dumps(sensor_data),
+            PartitionKey=sensor_data['sensor_id']
+        )
+        return 'success'
+        
+    except Exception as e:
+        print(f"Kinesis error: {str(e)}")
+        return f'error: {str(e)}'
