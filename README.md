@@ -1,10 +1,5 @@
 # Smart City Real-Time Analytics Platform
 
-[![AWS](https://img.shields.io/badge/AWS-%23FF9900.svg?style=for-the-badge&logo=amazon-aws&logoColor=white)](https://aws.amazon.com/)
-[![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)](https://www.python.org/)
-[![Apache Spark](https://img.shields.io/badge/Apache%20Spark-E25A1C?style=for-the-badge&logo=apachespark&logoColor=white)](https://spark.apache.org/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](https://opensource.org/licenses/MIT)
-
 ---
 
 ## 🏙️ Project Overview
@@ -572,44 +567,5 @@ aws cloudwatch get-metric-statistics \
   --dimensions Name=BucketName,Value=smart-city-datalake-dev
 ```
 
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📝 License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
----
-
-## 🙏 Acknowledgments
-
-- AWS Big Data Team for architectural guidance
-- Apache Spark community for processing frameworks
-- Smart city initiatives worldwide for inspiration
-
----
-
-## 📞 Support
-
-- **Documentation**: [docs/](docs/)
-- **Issues**: [GitHub Issues](https://github.com/yourusername/smart-city-analytics-pipeline/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/smart-city-analytics-pipeline/discussions)
-
----
-
-<div align="center">
-
-**Built with ❤️ for smarter, healthier cities**
-
-⭐ **Star this repo** if you find it helpful!
 
 </div>
