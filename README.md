@@ -1,10 +1,5 @@
 # 🌆 Smart City IoT Analytics Platform
 
-[![AWS](https://img.shields.io/badge/AWS-Cloud-orange?logo=amazon-aws)](https://aws.amazon.com/)
-[![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)](https://www.python.org/)
-[![PySpark](https://img.shields.io/badge/PySpark-3.5-orange?logo=apache-spark)](https://spark.apache.org/)
-[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
-
 > **Production-grade data engineering platform processing 100GB+ IoT sensor data monthly using AWS serverless architecture, dual ETL pipelines (batch CDC + streaming), and medallion data lake design.**
 
 ## 📖 Overview
