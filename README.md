@@ -1,6 +1,6 @@
 # 🌆 Smart City IoT Analytics Platform
 
-> **Production-grade data engineering platform processing 100GB+ IoT sensor data monthly using AWS serverless architecture, dual ETL pipelines (batch CDC + streaming), and medallion data lake design.**
+> **End-to-end data engineering platform processing IoT sensor data using AWS serverless architecture, dual ETL pipelines (batch CDC + streaming), and medallion data lake design.**
 
 ## 📖 Overview
 
