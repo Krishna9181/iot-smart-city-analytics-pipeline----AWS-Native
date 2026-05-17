@@ -1,6 +1,5 @@
 # Smart City IoT Analytics - Data Schema Documentation
 
-**Last Updated:** May 17, 2026  
 **Total Tables:** 8 Gold Layer Tables + 2 Silver Layer Tables  
 **Data Catalog:** AWS Glue Data Catalog
 
@@ -494,6 +493,3 @@ WHERE aq.hour >= CURRENT_TIMESTAMP - INTERVAL '24' HOUR;
 
 ---
 
-**Document Version:** 1.0  
-**Last Updated:** May 17, 2026  
-**Maintained By:** Sai Krishna Reddy Poluri
