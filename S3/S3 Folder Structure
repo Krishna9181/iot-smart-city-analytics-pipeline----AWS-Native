@@ -1,0 +1,18 @@
+smart-city-datalake-2026 -> bronze, checkpoints, silver, gold
+bronze:
+    cdc - air-quality - jsonl files (year, month, day, hr)
+    traffic-events - traffic - gz files (year, month, day, hr)
+
+silver:
+    air_quality - parquet files (year, month, day, hr)
+    traffic - parquet files (year, month, day, hr)
+
+gold:
+    air_quality_daily_summary/ 
+    air_quality_hourly_avg/
+    aqi_trends/
+    sensor_health_metrics/
+    traffic_congestion_trends/
+    traffic_daily_summary/
+    traffic_hourly_by_intersection/
+    traffic_incidents/
