@@ -1,0 +1,346 @@
+{
+  "Comment": "Smart City Air Quality Pipeline: Bronze→Silver→Crawl→Silver→Gold→Crawl 4 Gold Tables",
+  "StartAt": "Bronze to Silver Job",
+  "States": {
+    "Bronze to Silver Job": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "job-bronze-to-silver-air-quality"
+      },
+      "ResultPath": "$.bronzeToSilverResult",
+      "TimeoutSeconds": 1800,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "Notify Failure"
+        }
+      ],
+      "Next": "Crawl Silver Air Quality"
+    },
+    "Crawl Silver Air Quality": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "crawler-silver-air-quality"
+      },
+      "ResultPath": "$.silverCrawlerStart",
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.CrawlerRunningException"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 3,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "Notify Failure"
+        }
+      ],
+      "Next": "Wait for Silver Crawler"
+    },
+    "Wait for Silver Crawler": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "Check Silver Crawler Status"
+    },
+    "Check Silver Crawler Status": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+      "Parameters": {
+        "Name": "crawler-silver-air-quality"
+      },
+      "ResultPath": "$.silverCrawlerStatus",
+      "Next": "Is Silver Crawler Done"
+    },
+    "Is Silver Crawler Done": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.silverCrawlerStatus.Crawler.State",
+          "StringEquals": "RUNNING",
+          "Next": "Wait for Silver Crawler"
+        },
+        {
+          "Variable": "$.silverCrawlerStatus.Crawler.State",
+          "StringEquals": "READY",
+          "Next": "Silver to Gold Job"
+        }
+      ],
+      "Default": "Notify Failure"
+    },
+    "Silver to Gold Job": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::glue:startJobRun.sync",
+      "Parameters": {
+        "JobName": "job-silver-to-gold-air-quality"
+      },
+      "ResultPath": "$.silverToGoldResult",
+      "TimeoutSeconds": 1800,
+      "Retry": [
+        {
+          "ErrorEquals": ["States.TaskFailed"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 2,
+          "BackoffRate": 2.0
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "Notify Failure"
+        }
+      ],
+      "Next": "Crawl Gold Hourly Avg"
+    },
+    "Crawl Gold Hourly Avg": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "crawler-gold-air-quality-hourly-avg"
+      },
+      "ResultPath": "$.goldCrawler1Start",
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.CrawlerRunningException"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 3,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "Notify Failure"
+        }
+      ],
+      "Next": "Wait Gold Crawler 1"
+    },
+    "Wait Gold Crawler 1": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "Check Gold Crawler 1"
+    },
+    "Check Gold Crawler 1": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+      "Parameters": {
+        "Name": "crawler-gold-air-quality-hourly-avg"
+      },
+      "ResultPath": "$.goldCrawler1Status",
+      "Next": "Is Gold Crawler 1 Done"
+    },
+    "Is Gold Crawler 1 Done": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.goldCrawler1Status.Crawler.State",
+          "StringEquals": "RUNNING",
+          "Next": "Wait Gold Crawler 1"
+        },
+        {
+          "Variable": "$.goldCrawler1Status.Crawler.State",
+          "StringEquals": "READY",
+          "Next": "Crawl Gold Daily Summary"
+        }
+      ],
+      "Default": "Notify Failure"
+    },
+    "Crawl Gold Daily Summary": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "crawler-gold-air-quality-daily-summary"
+      },
+      "ResultPath": "$.goldCrawler2Start",
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.CrawlerRunningException"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 3,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "Notify Failure"
+        }
+      ],
+      "Next": "Wait Gold Crawler 2"
+    },
+    "Wait Gold Crawler 2": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "Check Gold Crawler 2"
+    },
+    "Check Gold Crawler 2": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+      "Parameters": {
+        "Name": "crawler-gold-air-quality-daily-summary"
+      },
+      "ResultPath": "$.goldCrawler2Status",
+      "Next": "Is Gold Crawler 2 Done"
+    },
+    "Is Gold Crawler 2 Done": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.goldCrawler2Status.Crawler.State",
+          "StringEquals": "RUNNING",
+          "Next": "Wait Gold Crawler 2"
+        },
+        {
+          "Variable": "$.goldCrawler2Status.Crawler.State",
+          "StringEquals": "READY",
+          "Next": "Crawl Gold Sensor Health"
+        }
+      ],
+      "Default": "Notify Failure"
+    },
+    "Crawl Gold Sensor Health": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "crawler-gold-air-quality-sensor-health-metrics"
+      },
+      "ResultPath": "$.goldCrawler3Start",
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.CrawlerRunningException"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 3,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "Notify Failure"
+        }
+      ],
+      "Next": "Wait Gold Crawler 3"
+    },
+    "Wait Gold Crawler 3": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "Check Gold Crawler 3"
+    },
+    "Check Gold Crawler 3": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+      "Parameters": {
+        "Name": "crawler-gold-air-quality-sensor-health-metrics"
+      },
+      "ResultPath": "$.goldCrawler3Status",
+      "Next": "Is Gold Crawler 3 Done"
+    },
+    "Is Gold Crawler 3 Done": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.goldCrawler3Status.Crawler.State",
+          "StringEquals": "RUNNING",
+          "Next": "Wait Gold Crawler 3"
+        },
+        {
+          "Variable": "$.goldCrawler3Status.Crawler.State",
+          "StringEquals": "READY",
+          "Next": "Crawl Gold AQI Trends"
+        }
+      ],
+      "Default": "Notify Failure"
+    },
+    "Crawl Gold AQI Trends": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:startCrawler",
+      "Parameters": {
+        "Name": "crawler-gold-air-quality-aqi-trends"
+      },
+      "ResultPath": "$.goldCrawler4Start",
+      "Retry": [
+        {
+          "ErrorEquals": ["Glue.CrawlerRunningException"],
+          "IntervalSeconds": 30,
+          "MaxAttempts": 3,
+          "BackoffRate": 1.5
+        }
+      ],
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "ResultPath": "$.errorInfo",
+          "Next": "Notify Failure"
+        }
+      ],
+      "Next": "Wait Gold Crawler 4"
+    },
+    "Wait Gold Crawler 4": {
+      "Type": "Wait",
+      "Seconds": 60,
+      "Next": "Check Gold Crawler 4"
+    },
+    "Check Gold Crawler 4": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::aws-sdk:glue:getCrawler",
+      "Parameters": {
+        "Name": "crawler-gold-air-quality-aqi-trends"
+      },
+      "ResultPath": "$.goldCrawler4Status",
+      "Next": "Is Gold Crawler 4 Done"
+    },
+    "Is Gold Crawler 4 Done": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Variable": "$.goldCrawler4Status.Crawler.State",
+          "StringEquals": "RUNNING",
+          "Next": "Wait Gold Crawler 4"
+        },
+        {
+          "Variable": "$.goldCrawler4Status.Crawler.State",
+          "StringEquals": "READY",
+          "Next": "Notify Success"
+        }
+      ],
+      "Default": "Notify Failure"
+    },
+    "Notify Success": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:YOUR_REGION:YOUR_ACCOUNT_ID:smart-city-pipeline-success",
+        "Subject": "✅ Air Quality Pipeline Success",
+        "Message.$": "States.Format('Air Quality Pipeline completed!\n\n✅ Bronze→Silver Job: {}\n✅ Silver Crawler: Complete\n✅ Silver→Gold Job: {}\n✅ All 4 Gold Crawlers: Complete\n\nTimestamp: {}', $.bronzeToSilverResult.JobRunId, $.silverToGoldResult.JobRunId, $$.State.EnteredTime)"
+      },
+      "End": true
+    },
+    "Notify Failure": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::sns:publish",
+      "Parameters": {
+        "TopicArn": "arn:aws:sns:YOUR_REGION:YOUR_ACCOUNT_ID:smart-city-pipeline-failure",
+        "Subject": "❌ Air Quality Pipeline Failed",
+        "Message.$": "States.Format('Air Quality Pipeline FAILED!\n\n❌ Error: {}\n\nExecution: {}\nTimestamp: {}', $.errorInfo.Cause, $$.Execution.Name, $$.State.EnteredTime)"
+      },
+      "End": true
+    }
+  }
+}
