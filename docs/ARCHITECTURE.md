@@ -1,10 +1,5 @@
 # Smart City IoT Analytics - Architecture Documentation
 
-**Last Updated:** May 17, 2026  
-**Version:** 1.0  
-**Status:** Production
-
----
 
 ## 📐 High-Level Architecture
 
@@ -61,7 +56,7 @@ This project implements a modern data lake architecture using AWS serverless tec
 
 **Data Generation:**
 - **Lambda Function:** `smart-city-air-quality-generator`
-- **Trigger:** EventBridge (every 5 minutes)
+- **Trigger:** EventBridge (every 1 minute)
 - **Runtime:** Python 3.12
 - **Memory:** 256 MB
 - **Output:** Writes to DynamoDB table `iot_air_quality_sensors`
@@ -438,17 +433,3 @@ s3://smart-city-datalake-2026/
 - Amazon Managed Service for Apache Flink for advanced streaming
 - API Gateway + Lambda for external data access
 
----
-
-## 📚 Architecture References
-
-- [AWS Well-Architected Framework](https://aws.amazon.com/architecture/well-architected/)
-- [AWS Data Lakes and Analytics](https://aws.amazon.com/big-data/datalakes-and-analytics/)
-- [Medallion Architecture Pattern](https://www.databricks.com/glossary/medallion-architecture)
-- [AWS Glue Best Practices](https://docs.aws.amazon.com/glue/latest/dg/best-practices.html)
-
----
-
-**Document Version:** 1.0  
-**Last Updated:** May 17, 2026  
-**Maintained By:** Sai Krishna Reddy Poluri
