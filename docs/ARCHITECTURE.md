@@ -25,7 +25,7 @@ This project implements a modern data lake architecture using AWS serverless tec
 ```
 ┌─────────────┐     ┌────────────┐     ┌────────────┐
 │ EventBridge │────▶│   Lambda   │────▶│  DynamoDB  │
-│  (5 min)    │     │ Generator  │     │   Table    │
+│  (1 min)    │     │ Generator  │     │   Table    │
 └─────────────┘     └────────────┘     └──────┬─────┘
                                               │
                                        DynamoDB Streams
