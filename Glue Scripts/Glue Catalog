@@ -1,0 +1,16 @@
+Catalog:
+    Databases:
+        smart_city_bronze:
+            cdc_air_quality
+        smart_city_silver:
+            air_quality
+            traffic
+        smart_city_gold:
+            air_quality_daily_summary
+            air_quality_hourly_avg
+            aqi_trends
+            sensor_health_metrics
+            traffic_congestion_trends
+            traffic_daily_summary
+            traffic_hourly_by_intersection
+            traffic_incidents

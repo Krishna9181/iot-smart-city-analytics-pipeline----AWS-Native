@@ -1,0 +1,11 @@
+crawler-bronze-air-quality-cdc
+crawler-gold-air-quality-aqi-trends
+crawler-gold-air-quality-daily-summary
+crawler-gold-air-quality-hourly-avg
+crawler-gold-air-quality-sensor-health-metrics
+crawler-gold-traffic-congestion-trends
+crawler-gold-traffic-daily-summary
+crawler-gold-traffic-hourly-interactions
+crawler-gold-traffic-incidents
+crawler-silver-air-quality
+crawler-silver-traffic-events

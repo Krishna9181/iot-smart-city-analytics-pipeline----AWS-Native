@@ -1,0 +1,65 @@
+{
+	"jobConfig": {
+		"name": "traffic-streaming-bronze-to-silver",
+		"description": "",
+		"role": "arn:aws:iam::616077260715:role/SmartCity-Glue-ServiceRole",
+		"command": "glueetl",
+		"version": "4.0",
+		"runtime": null,
+		"workerType": "G.1X",
+		"numberOfWorkers": 5,
+		"maxCapacity": 5,
+		"jobRunQueuingEnabled": false,
+		"maxRetries": 0,
+		"timeout": 480,
+		"maxConcurrentRuns": 1,
+		"security": "none",
+		"scriptName": "traffic_streaming_bronze_to_silver.py",
+		"scriptLocation": "s3://smart-city-scripts-2026/glue/",
+		"language": "python-3",
+		"spark": true,
+		"sparkConfiguration": "standard",
+		"jobParameters": [
+			{
+				"key": "--BRONZE_PATH",
+				"value": "s3://smart-city-datalake-2026/bronze/traffic-events/traffic/",
+				"existing": false
+			},
+			{
+				"key": "--CHECKPOINT_PATH",
+				"value": "s3://smart-city-datalake-2026/checkpoints/glue-streaming/",
+				"existing": false
+			},
+			{
+				"key": "--SILVER_PATH",
+				"value": "s3://smart-city-datalake-2026/silver/traffic/",
+				"existing": false
+			},
+			{
+				"key": "--conf",
+				"value": "spark.eventLog.rolling.enabled=true --conf spark.sql.catalog.glue_catalog.glue.skip-name-validation=true",
+				"existing": false
+			}
+		],
+		"tags": [],
+		"jobMode": "DEVELOPER_MODE",
+		"createdOn": "2026-05-16T23:29:16.682Z",
+		"developerMode": true,
+		"connectionsList": [],
+		"temporaryDirectory": "s3://aws-glue-assets-616077260715-us-east-1/temporary/",
+		"etlAutoScaling": true,
+		"logging": true,
+		"glueHiveMetastore": true,
+		"etlAutoTuning": true,
+		"metrics": true,
+		"observabilityMetrics": true,
+		"bookmark": "job-bookmark-enable",
+		"sparkPath": "s3://aws-glue-assets-616077260715-us-east-1/sparkHistoryLogs/",
+		"flexExecution": false,
+		"minFlexWorkers": null,
+		"maintenanceWindow": null
+	},
+	"hasBeenSaved": false,
+	"usageProfileName": null,
+	"script": "import sys\r\nfrom awsglue.transforms import *\r\nfrom awsglue.utils import getResolvedOptions\r\nfrom pyspark.context import SparkContext\r\nfrom awsglue.context import GlueContext\r\nfrom awsglue.job import Job\r\nfrom pyspark.sql import functions as F\r\nfrom pyspark.sql.types import *\r\nfrom datetime import datetime\r\n\r\n# Get job parameters\r\nargs = getResolvedOptions(sys.argv, [\r\n    'JOB_NAME',\r\n    'BRONZE_PATH',\r\n    'SILVER_PATH',\r\n    'CHECKPOINT_PATH'\r\n])\r\n\r\n# Initialize Glue Context\r\nsc = SparkContext()\r\nglueContext = GlueContext(sc)\r\nspark = glueContext.spark_session\r\njob = Job(glueContext)\r\njob.init(args['JOB_NAME'], args)\r\n\r\nprint(\"=\" * 80)\r\nprint(\"Glue Streaming Job: Traffic Bronze → Silver\")\r\nprint(\"=\" * 80)\r\n\r\n# Configuration from job parameters\r\nBRONZE_PATH = args['BRONZE_PATH']\r\nSILVER_PATH = args['SILVER_PATH']\r\nCHECKPOINT_PATH = args['CHECKPOINT_PATH']\r\n\r\nprint(f\"Bronze: {BRONZE_PATH}\")\r\nprint(f\"Silver: {SILVER_PATH}\")\r\nprint(f\"Checkpoint: {CHECKPOINT_PATH}\")\r\n\r\n# Define Schema\r\ntraffic_schema = StructType([\r\n    StructField(\"sensor_id\", StringType(), True),\r\n    StructField(\"timestamp\", StringType(), True),\r\n    StructField(\"event_id\", StringType(), True),\r\n    StructField(\"sensor_type\", StringType(), True),\r\n    \r\n    StructField(\"location\", StructType([\r\n        StructField(\"lat\", DoubleType(), True),\r\n        StructField(\"lon\", DoubleType(), True),\r\n        StructField(\"intersection\", StringType(), True),\r\n        StructField(\"road_type\", StringType(), True),\r\n        StructField(\"city\", StringType(), True),\r\n        StructField(\"country\", StringType(), True)\r\n    ]), True),\r\n    \r\n    StructField(\"measurements\", StructType([\r\n        StructField(\"vehicle_count\", IntegerType(), True),\r\n        StructField(\"avg_speed_mph\", DoubleType(), True),\r\n        StructField(\"congestion_level\", StringType(), True),\r\n        StructField(\"pedestrian_count\", IntegerType(), True),\r\n        StructField(\"bike_count\", IntegerType(), True),\r\n        StructField(\"occupancy_percent\", DoubleType(), True),\r\n        StructField(\"queue_length_meters\", DoubleType(), True)\r\n    ]), True),\r\n    \r\n    StructField(\"traffic_flow_score\", IntegerType(), True),\r\n    StructField(\"incident_detected\", BooleanType(), True),\r\n    \r\n    StructField(\"metadata\", StructType([\r\n        StructField(\"device_status\", StringType(), True),\r\n        StructField(\"signal_strength\", IntegerType(), True),\r\n        StructField(\"firmware_version\", StringType(), True)\r\n    ]), True),\r\n    \r\n    StructField(\"partition_year\", StringType(), True),\r\n    StructField(\"partition_month\", StringType(), True),\r\n    StructField(\"partition_day\", StringType(), True),\r\n    StructField(\"partition_hour\", StringType(), True),\r\n    \r\n    StructField(\"created_at\", StringType(), True),\r\n    StructField(\"data_source\", StringType(), True),\r\n    StructField(\"ingestion_type\", StringType(), True)\r\n])\r\n\r\n# Read Streaming Data from Bronze\r\nprint(\"Reading Bronze streaming data...\")\r\nbronze_stream = spark.readStream \\\r\n    .format(\"json\") \\\r\n    .schema(traffic_schema) \\\r\n    .option(\"maxFilesPerTrigger\", 10) \\\r\n    .option(\"compression\", \"gzip\") \\\r\n    .load(BRONZE_PATH)\r\n\r\nprint(\"✓ Bronze stream initialized\")\r\n\r\n# Transform to Silver Schema\r\nprint(\"Transforming to Silver...\")\r\nsilver_stream = bronze_stream.select(\r\n    F.col(\"sensor_id\"),\r\n    F.col(\"timestamp\").alias(\"reading_timestamp\"),\r\n    F.to_timestamp(\"timestamp\").alias(\"reading_datetime\"),\r\n    F.col(\"sensor_type\"),\r\n    F.col(\"event_id\"),\r\n    \r\n    F.col(\"location.lat\").alias(\"latitude\"),\r\n    F.col(\"location.lon\").alias(\"longitude\"),\r\n    F.col(\"location.intersection\").alias(\"intersection\"),\r\n    F.col(\"location.road_type\").alias(\"road_type\"),\r\n    F.col(\"location.city\").alias(\"city\"),\r\n    F.col(\"location.country\").alias(\"country\"),\r\n    \r\n    F.col(\"measurements.vehicle_count\").alias(\"vehicle_count\"),\r\n    F.col(\"measurements.avg_speed_mph\").alias(\"avg_speed_mph\"),\r\n    F.col(\"measurements.congestion_level\").alias(\"congestion_level\"),\r\n    F.col(\"measurements.pedestrian_count\").alias(\"pedestrian_count\"),\r\n    F.col(\"measurements.bike_count\").alias(\"bike_count\"),\r\n    F.col(\"measurements.occupancy_percent\").alias(\"occupancy_percent\"),\r\n    F.col(\"measurements.queue_length_meters\").alias(\"queue_length_meters\"),\r\n    \r\n    F.col(\"traffic_flow_score\"),\r\n    F.col(\"incident_detected\"),\r\n    \r\n    F.col(\"metadata.device_status\").alias(\"device_status\"),\r\n    F.col(\"metadata.signal_strength\").alias(\"signal_strength_dbm\"),\r\n    F.col(\"metadata.firmware_version\").alias(\"firmware_version\"),\r\n    \r\n    F.current_timestamp().alias(\"silver_processed_at\"),\r\n    F.col(\"data_source\"),\r\n    F.col(\"ingestion_type\"),\r\n    \r\n    F.year(F.to_timestamp(\"timestamp\")).alias(\"year\"),\r\n    F.month(F.to_timestamp(\"timestamp\")).alias(\"month\"),\r\n    F.dayofmonth(F.to_timestamp(\"timestamp\")).alias(\"day\"),\r\n    F.hour(F.to_timestamp(\"timestamp\")).alias(\"hour\")\r\n)\r\n\r\n# Data Quality Filtering\r\nquality_stream = silver_stream.filter(\r\n    (F.col(\"sensor_id\").isNotNull()) &\r\n    (F.col(\"latitude\").isNotNull()) &\r\n    (F.col(\"longitude\").isNotNull()) &\r\n    (F.col(\"latitude\").between(-90, 90)) &\r\n    (F.col(\"longitude\").between(-180, 180)) &\r\n    (F.col(\"vehicle_count\").isNotNull()) &\r\n    (F.col(\"vehicle_count\") >= 0) &\r\n    (F.col(\"avg_speed_mph\").isNotNull()) &\r\n    (F.col(\"avg_speed_mph\") >= 0) &\r\n    (F.col(\"avg_speed_mph\") <= 100)\r\n)\r\n\r\n# Deduplication with Watermarking\r\ndeduped_stream = quality_stream \\\r\n    .withWatermark(\"reading_datetime\", \"5 minutes\") \\\r\n    .dropDuplicates([\"event_id\"])\r\n\r\nprint(\"✓ Transformations configured\")\r\n\r\n# Write to Silver Layer (Parquet)\r\nprint(\"Starting streaming write to Silver...\")\r\nquery = deduped_stream.writeStream \\\r\n    .format(\"parquet\") \\\r\n    .option(\"compression\", \"snappy\") \\\r\n    .option(\"checkpointLocation\", CHECKPOINT_PATH) \\\r\n    .option(\"path\", SILVER_PATH) \\\r\n    .option(\"spark.sql.streaming.schemaTrackingLocation\", f\"{CHECKPOINT_PATH}_schemas/\") \\\r\n    .partitionBy(\"year\", \"month\", \"day\", \"hour\") \\\r\n    .outputMode(\"append\") \\\r\n    .trigger(processingTime=\"2 minutes\") \\\r\n    .start()\r\n\r\nprint(\"✓ Streaming query started\")\r\nprint(f\"Query ID: {query.id}\")\r\n\r\n# Keep the job running\r\nquery.awaitTermination()\r\n\r\n# job.commit()\r\n# print(\"✓ Job completed\")"
+}
