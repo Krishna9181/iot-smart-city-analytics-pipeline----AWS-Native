@@ -1,4 +1,0 @@
-air-quality-pipeline-hourly-trigger ------------> Triggers air quality step function every one hour
-traffic-pipeline-hourly-trigger ------------> Triggers traffic step function every one hour
-smart-city-iot-simulator-trigger ------------> Triggers air quality event generation lambda script every one minute
-smart-city-kinesis-simulator-trigger ------------> Triggers traffic events lambda function every one minute
